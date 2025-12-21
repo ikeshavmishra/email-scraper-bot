@@ -1,87 +1,93 @@
-const express = require('express');
-const cors = require('cors');
-const EmailScraper = require('./scraper');
+const express = require("express");
+const cors = require("cors");
+const EmailScraper = require("./scraper");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// ⏱️ START TIMER (FIXED POSITION)
+// timing middleware
 app.use((req, res, next) => {
-    req.startTime = Date.now();
-    next();
+  req.startTime = Date.now();
+  next();
 });
 
-// Request validation
-const validateScrapeRequest = (req, res, next) => {
-    const { url } = req.body;
+function validateScrapeRequest(req, res, next) {
+  const body = req.body || {};
+  const { url, maxPages, concurrency, fast, maxEmails } = body;
 
-    if (!url) {
-        return res.status(400).json({
-            error: 'URL is required',
-            example: { url: 'https://example.com' }
-        });
-    }
+  if (!url || typeof url !== "string") {
+    return res.status(400).json({
+      success: false,
+      error: "Missing 'url' (string) in request body.",
+    });
+  }
 
-    try {
-        new URL(url);
-        next();
-    } catch {
-        return res.status(400).json({
-            error: 'Invalid URL format'
-        });
-    }
-};
+  if (maxPages !== undefined && isNaN(Number(maxPages))) {
+    return res.status(400).json({ success: false, error: "'maxPages' must be a number." });
+  }
+  if (concurrency !== undefined && isNaN(Number(concurrency))) {
+    return res.status(400).json({ success: false, error: "'concurrency' must be a number." });
+  }
+  if (maxEmails !== undefined && isNaN(Number(maxEmails))) {
+    return res.status(400).json({ success: false, error: "'maxEmails' must be a number." });
+  }
+  if (fast !== undefined && typeof fast !== "boolean") {
+    return res.status(400).json({ success: false, error: "'fast' must be a boolean." });
+  }
 
-// Health check
-app.get('/api/health', (req, res) => {
+  next();
+}
+
+app.post("/api/scrape", validateScrapeRequest, async (req, res) => {
+  try {
+    let {
+      url,
+      maxPages = 30,       // faster default for free servers
+      concurrency = 4,     // sweet spot for Render free
+      fast = true,         // fast mode ON by default
+      maxEmails = 2        // stop early after N emails
+    } = req.body;
+
+    // safety bounds
+    maxPages = Math.max(1, Math.min(Number(maxPages) || 30, 500));
+    concurrency = Math.max(1, Math.min(Number(concurrency) || 4, 20));
+    maxEmails = Math.max(1, Math.min(Number(maxEmails) || 2, 50));
+
+    const scraper = new EmailScraper(url, {
+      maxPages,
+      concurrency,
+      fast,
+      maxEmails,
+    });
+
+    const emails = await scraper.scrapeWebsite();
+
     res.json({
-        status: 'online',
-        service: 'Email Scraper Bot',
-        timestamp: new Date().toISOString()
+      success: true,
+      // base URL after filtering long links
+      url: scraper.baseUrl,
+      inputUrl: url,
+      maxPages,
+      concurrency,
+      fast,
+      maxEmails,
+      pagesScanned: scraper.visitedUrls.size,
+      emailsFound: emails.length,
+      emails,
+      processingTime: `${((Date.now() - req.startTime) / 1000).toFixed(2)}s`,
     });
-});
-
-// Scrape endpoint
-app.post('/api/scrape', validateScrapeRequest, async (req, res) => {
-    try {
-        const { url, maxPages = 50, concurrency = 5 } = req.body;
-
-        const scraper = new EmailScraper(url, {
-            maxPages,
-            concurrency
-        });
-
-        const emails = await scraper.scrapeWebsite();
-
-        res.json({
-            success: true,
-            url,
-            pagesScanned: scraper.visitedUrls.size,
-            emailsFound: emails.length,
-            emails,
-            processingTime: `${((Date.now() - req.startTime) / 1000).toFixed(2)}s`
-        });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// 404
-app.use('*', (req, res) => {
-    res.status(404).json({
-        error: 'Endpoint not found'
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Internal server error",
     });
+  }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

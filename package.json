@@ -1,6 +1,6 @@
 {
   "name": "email-scraper-bot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Email scraper from the website",
   "main": "index.js",
   "type": "commonjs",
