@@ -259,8 +259,25 @@ class EmailScraper {
     const m = email.match(/^([A-Za-z0-9._%+-]{1,64})@([A-Za-z0-9.-]{1,253})$/);
     if (!m) return null;
 
-    const local = m[1];
+    // const local = m[1];
+    // const domain = m[2];
+
+    let local = m[1];
     const domain = m[2];
+
+    // FIX 1: strip URL-encoded whitespace prefix like "%20info@email.com"
+    if (/^%(?:20|09|0a|0d)+/i.test(local)) {
+    local = local.replace(/^%(?:20|09|0a|0d)+/i, "");
+   }
+
+    // FIX 2: strip percent-prefix glue like "20%info@email.com"
+    if (/^\d{1,3}%[A-Za-z]/.test(local)) {
+    local = local.replace(/^\d{1,3}%+/, "");
+    }
+
+    // after stripping, local must still be valid
+    if (!local) return null;
+    if (!/^[A-Za-z0-9._%+-]{1,64}$/.test(local)) return null;
 
     // must contain dot
     const lastDot = domain.lastIndexOf(".");
