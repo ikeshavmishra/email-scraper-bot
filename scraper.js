@@ -259,9 +259,6 @@ class EmailScraper {
     const m = email.match(/^([A-Za-z0-9._%+-]{1,64})@([A-Za-z0-9.-]{1,253})$/);
     if (!m) return null;
 
-    // const local = m[1];
-    // const domain = m[2];
-
     let local = m[1];
     const domain = m[2];
 
